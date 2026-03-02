@@ -1,16 +1,44 @@
-# React + Vite
+# 🩺 Assistente VEBC Inteligente (SUS)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Aplicação web para **triagem sindrômica** e **classificação rápida de risco** em cenários de **Vigilância Epidemiológica de Base Comunitária (VEBC)**, com geração opcional de **análise situacional** e **mensagens para a comunidade** via **API da OpenAI** (back-end em Serverless Functions na Vercel). 🚀
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## ✨ Funcionalidades
 
-## React Compiler
+- 🧭 **Triagem por categorias sindrômicas** (respiratória, diarreica, exantemática, hemorrágica, neurológica e epizootias)
+- ✅ **Checklist de risco** com cálculo automático e **classificação** (Baixo/Médio/Alto)
+- 📌 **Agravos possíveis** por síndrome (tags)
+- ⚡ **Ações imediatas** sugeridas (operacional)
+- 🤖 **Análise situacional** gerada por IA (OpenAI)
+- 💬 **Mensagem para a comunidade** (linguagem simples)
+- 🔊 **TTS (áudio)** via endpoint `/api/tts` (se configurado)
+- 🖨️ **Salvar/Imprimir PDF** (via `window.print()`)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## 🧱 Stack
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- ⚛️ **React** + **Vite**
+- 🎨 **Tailwind CSS**
+- 🧩 **Lucide React** (ícones)
+- ☁️ **Vercel** (deploy + Serverless Functions)
+- 🤖 **OpenAI API** (via `/api/analyze`)
+
+---
+
+## 🗂️ Estrutura do projeto
+
+```txt
+assistente-vebc/
+├─ api/
+│  ├─ analyze.js         # Serverless Function: chama OpenAI (Responses API)
+│  └─ tts.js             # (Opcional) Serverless Function: TTS (se existir)
+├─ src/
+│  ├─ App.jsx
+│  ├─ main.jsx
+│  └─ index.css
+├─ postcss.config.js
+├─ tailwind.config.js
+├─ vite.config.js
+└─ package.json
