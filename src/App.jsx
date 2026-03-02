@@ -1,14 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  AlertTriangle, 
-  ChevronRight, 
-  ChevronLeft, 
-  CheckCircle, 
-  Users, 
-  Activity, 
+import {
+  AlertTriangle,
+  ChevronRight,
+  ChevronLeft,
+  Activity,
   ClipboardCheck,
   Stethoscope,
-  MapPin,
   Bug,
   Thermometer,
   Sparkles,
@@ -17,9 +14,6 @@ import {
   FileText,
   Loader2
 } from 'lucide-react';
-
-// Configuração da API via Variável de Ambiente (Vite)
-const apiKey = import.meta.env.VITE_GEMINI_API_VEBC;
 
 const VEBC_DATA = {
   categorias: [
@@ -81,20 +75,6 @@ const VEBC_DATA = {
   ]
 };
 
-// Utilitário para chamadas de API com Retry
-async function fetchWithRetry(url, options, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await fetch(url, options);
-      if (response.ok) return await response.json();
-      if (response.status === 404) throw new Error("Modelo não encontrado (404)");
-    } catch (err) {
-      if (i === retries - 1) throw err;
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-    }
-  }
-}
-
 export default function App() {
   const [step, setStep] = useState(1);
   const [selectedRumor, setSelectedRumor] = useState(null);
@@ -113,96 +93,83 @@ export default function App() {
     setRiskAnswers(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const riskScore = useMemo(() => Object.values(riskAnswers).filter(Boolean).length, [riskAnswers]);
+  const riskScore = useMemo(
+    () => Object.values(riskAnswers).filter(Boolean).length,
+    [riskAnswers]
+  );
+
   const riskLevel = useMemo(() => {
     if (riskScore >= 4) return { label: 'ALTO RISCO', color: 'bg-red-600', text: 'Ação imediata (CIEVS Nacional/Estadual)' };
     if (riskScore >= 2) return { label: 'RISCO MÉDIO', color: 'bg-orange-500', text: 'Investigação local urgente e monitoramento' };
     return { label: 'BAIXO RISCO', color: 'bg-blue-500', text: 'Acompanhamento pela APS e Vigilância Municipal' };
   }, [riskScore]);
 
-  // Função 1: Análise com modelo estável gemini-1.5-flash
   const generateAiAnalysis = async () => {
+    if (!selectedRumor) return;
     setLoadingAi(true);
-    const prompt = `Analise tecnicamente: Rumor: ${selectedRumor.titulo}. Risco: ${riskLevel.label}. Gere 2 parágrafos de recomendações para gestão de saúde pública.`;
-
     try {
-      const data = await fetchWithRetry(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-        }
-      );
-      setAiAnalysis(data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro na resposta.");
-    } catch (error) {
-      setAiAnalysis("Não foi possível conectar. Verifique sua chave API no arquivo .env.");
+      const resp = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rumor: selectedRumor.titulo,
+          sindrome: selectedRumor.tecnico,
+          riscoLabel: riskLevel.label,
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.error || "Erro");
+
+      setAiAnalysis(data.text || "Sem conteúdo retornado.");
+    } catch (e) {
+      setAiAnalysis("Erro na ligação à IA.");
     } finally {
       setLoadingAi(false);
     }
   };
 
-  // Função 2: Mensagem para Comunidade
   const generateCommunityMessage = async () => {
+    if (!selectedRumor) return;
     setLoadingAi(true);
-    const prompt = `Crie uma mensagem de WhatsApp para a comunidade sobre: ${selectedRumor.titulo}. Linguagem simples, sem pânico.`;
-
     try {
-      const data = await fetchWithRetry(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-        }
-      );
-      setAiCommunityMessage(data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro na mensagem.");
-    } catch (error) {
-      setAiCommunityMessage("Erro de conexão com a IA.");
+      const resp = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rumor: `Gere uma mensagem curta (até 60 palavras), linguagem simples e sem termos técnicos, para a comunidade sobre: ${selectedRumor.titulo}. Inclua orientação prática e quando procurar serviço de saúde.`,
+          sindrome: selectedRumor.tecnico,
+          riscoLabel: riskLevel.label,
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.error || "Erro");
+
+      setAiCommunityMessage(data.text || "Sem conteúdo retornado.");
+    } catch (e) {
+      setAiCommunityMessage("Erro na ligação à IA.");
     } finally {
       setLoadingAi(false);
     }
   };
 
-  // Função 3: Áudio (TTS) com correção do Blob
   const speakText = async (text) => {
-    if (!text || isSpeaking) return;
+    if (!text) return;
     setIsSpeaking(true);
-    
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: `Leia isto: ${text}` }] }],
-            generationConfig: { 
-              responseModalities: ["AUDIO"],
-              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } }
-            }
-          })
-        }
-      );
-      
-      const result = await response.json();
-      const pcmData = result.candidates[0].content.parts[0].inlineData.data;
-      
-      // Conversão Base64 para Áudio Blob
-      const byteCharacters = atob(pcmData);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const audioBlob = new Blob([byteArray], { type: 'audio/mp3' });
-      const url = URL.createObjectURL(audioBlob);
-      
-      const audio = new Audio(url);
+      const resp = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!resp.ok) throw new Error("Falha no TTS");
+
+      const blob = await resp.blob();
+      const audio = new Audio(URL.createObjectURL(blob));
       audio.onended = () => setIsSpeaking(false);
       audio.play();
-    } catch (error) {
-      console.error("Erro no áudio:", error);
+    } catch (e) {
       setIsSpeaking(false);
     }
   };
@@ -220,7 +187,11 @@ export default function App() {
         {step === 1 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in">
             {VEBC_DATA.categorias.map(cat => (
-              <button key={cat.id} onClick={() => handleRumorSelect(cat)} className="flex items-start p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-left">
+              <button
+                key={cat.id}
+                onClick={() => handleRumorSelect(cat)}
+                className="flex items-start p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-left"
+              >
                 <div className="p-3 bg-blue-100 text-blue-600 rounded-lg mr-4">{cat.icon}</div>
                 <div>
                   <h3 className="font-bold">{cat.titulo}</h3>
@@ -231,25 +202,43 @@ export default function App() {
           </div>
         )}
 
-        {step === 2 && (
+        {step === 2 && selectedRumor && (
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 animate-in slide-in-from-right-4">
             <h2 className="text-xl font-bold mb-6 text-blue-700">{selectedRumor.tecnico}</h2>
             <div className="space-y-3">
               {VEBC_DATA.riskQuestions.map(q => (
-                <label key={q.id} className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer ${riskAnswers[q.id] ? 'border-blue-500 bg-blue-50' : 'border-slate-100'}`}>
+                <label
+                  key={q.id}
+                  className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer ${riskAnswers[q.id] ? 'border-blue-500 bg-blue-50' : 'border-slate-100'}`}
+                >
                   <span>{q.text}</span>
-                  <input type="checkbox" className="w-5 h-5" checked={riskAnswers[q.id] || false} onChange={() => toggleRisk(q.id)} />
+                  <input
+                    type="checkbox"
+                    className="w-5 h-5"
+                    checked={riskAnswers[q.id] || false}
+                    onChange={() => toggleRisk(q.id)}
+                  />
                 </label>
               ))}
             </div>
             <div className="mt-8 flex justify-between">
-              <button onClick={() => setStep(1)} className="text-slate-500 font-bold flex items-center gap-1"><ChevronLeft /> Voltar</button>
-              <button onClick={() => setStep(3)} className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg flex items-center gap-2">Ver Resultado <ChevronRight /></button>
+              <button
+                onClick={() => setStep(1)}
+                className="text-slate-500 font-bold flex items-center gap-1"
+              >
+                <ChevronLeft /> Voltar
+              </button>
+              <button
+                onClick={() => setStep(3)}
+                className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg flex items-center gap-2"
+              >
+                Ver Resultado <ChevronRight />
+              </button>
             </div>
           </div>
         )}
 
-        {step === 3 && (
+        {step === 3 && selectedRumor && (
           <div className="space-y-6 animate-in zoom-in-95">
             <div className={`p-8 rounded-3xl text-white shadow-xl ${riskLevel.color}`}>
               <div className="flex justify-between items-center mb-4">
@@ -257,32 +246,95 @@ export default function App() {
                   <p className="text-blue-100 mb-1 font-medium">Classificação Final</p>
                   <h2 className="text-4xl font-black">{riskLevel.label}</h2>
                 </div>
-                <button onClick={() => speakText(`Risco ${riskLevel.label}. ${riskLevel.text}`)} className="p-4 bg-white/20 rounded-2xl">
+                <button
+                  onClick={() => speakText(`Risco ${riskLevel.label}. ${riskLevel.text}`)}
+                  className="p-4 bg-white/20 rounded-2xl"
+                >
                   {isSpeaking ? <Loader2 className="animate-spin" /> : <Volume2 size={32} />}
                 </button>
               </div>
               <p className="text-xl font-medium">{riskLevel.text}</p>
             </div>
 
+            {/* ✅ AQUI: Agravos possíveis + Ações imediatas */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <button onClick={generateAiAnalysis} disabled={loadingAi} className="p-4 bg-indigo-50 text-indigo-700 rounded-2xl font-bold border-2 border-indigo-200 flex items-center justify-center gap-2">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <h4 className="font-black text-slate-400 mb-3 text-[10px] uppercase tracking-[0.2em]">
+                  Agravos possíveis
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {selectedRumor.eventos.map((e, idx) => (
+                    <span
+                      key={idx}
+                      className="bg-blue-50 text-blue-700 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider"
+                    >
+                      {e}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <h4 className="font-black text-slate-400 mb-3 text-[10px] uppercase tracking-[0.2em]">
+                  Ações imediatas
+                </h4>
+                <div className="space-y-2 text-sm font-semibold text-slate-600">
+                  <p>• Notificar CIEVS (24h)</p>
+                  <p>• Acionar equipe da APS</p>
+                  <p>• Iniciar busca ativa</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Botões de IA */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button
+                onClick={generateAiAnalysis}
+                disabled={loadingAi}
+                className="p-4 bg-indigo-50 text-indigo-700 rounded-2xl font-bold border-2 border-indigo-200 flex items-center justify-center gap-2 disabled:opacity-60"
+              >
                 {loadingAi ? <Loader2 className="animate-spin" /> : <FileText />} Análise Situacional ✨
               </button>
-              <button onClick={generateCommunityMessage} disabled={loadingAi} className="p-4 bg-emerald-50 text-emerald-700 rounded-2xl font-bold border-2 border-emerald-200 flex items-center justify-center gap-2">
+              <button
+                onClick={generateCommunityMessage}
+                disabled={loadingAi}
+                className="p-4 bg-emerald-50 text-emerald-700 rounded-2xl font-bold border-2 border-emerald-200 flex items-center justify-center gap-2 disabled:opacity-60"
+              >
                 {loadingAi ? <Loader2 className="animate-spin" /> : <MessageSquare />} Mensagem Comunidade ✨
               </button>
             </div>
 
             {aiAnalysis && (
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <h3 className="font-bold mb-2 flex items-center gap-2 text-indigo-600"><Sparkles size={18} /> Relatório Inteligente</h3>
+                <h3 className="font-bold mb-2 flex items-center gap-2 text-indigo-600">
+                  <Sparkles size={18} /> Relatório Inteligente
+                </h3>
                 <p className="text-slate-600 leading-relaxed whitespace-pre-wrap">{aiAnalysis}</p>
               </div>
             )}
 
+            {aiCommunityMessage && (
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <h3 className="font-bold mb-2 flex items-center gap-2 text-emerald-600">
+                  <MessageSquare size={18} /> Mensagem para a Comunidade
+                </h3>
+                <p className="text-slate-600 leading-relaxed whitespace-pre-wrap">{aiCommunityMessage}</p>
+              </div>
+            )}
+
             <div className="flex gap-4 pb-10">
-              <button onClick={() => { setStep(1); setRiskAnswers({}); setAiAnalysis(""); }} className="flex-1 py-4 border-2 border-slate-200 text-slate-600 rounded-2xl font-bold">Nova Triagem</button>
-              <button onClick={() => window.print()} className="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-bold">Salvar PDF</button>
+              <button
+                onClick={() => { setStep(1); setRiskAnswers({}); setAiAnalysis(""); setAiCommunityMessage(""); }}
+                className="flex-1 py-4 border-2 border-slate-200 text-slate-600 rounded-2xl font-bold"
+              >
+                Nova Triagem
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-bold"
+              >
+                Salvar PDF
+              </button>
             </div>
           </div>
         )}
